@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard - Smart Attendance System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Dark Mode Extensions */
+        body.dark-mode { background: linear-gradient(to right, #1a1a2e, #16213e); color: #eee; }
+        body.dark-mode .card { background: #2d3748; color: #eee; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        body.dark-mode input, body.dark-mode select { background: #2d3748; color: #eee; border-color: #4a5568; }
+        body.dark-mode .calendar-header { background: #1a202c; color: white; }
+        body.dark-mode .calendar-day { border-color: #4a5568; }
+        body.dark-mode .calendar-day.empty { background: #1a202c; }
+        body.dark-mode .calendar-day.working { background: #2c5282; color: #e2e8f0; }
+        body.dark-mode .calendar-day.sunday { background: #744210; color: #fbd38d; }
+        body.dark-mode .summary-text { background: #276749; color: #c6f6d5; }
+        body.dark-mode .risk-high { background: #742a2a; color: #feb2b2; border-left-color: #f56565; }
+        body.dark-mode .risk-medium { background: #7b341e; color: #fbd38d; border-left-color: #ed8936; }
+        body.dark-mode .risk-low { background: #22543d; color: #9ae6b4; border-left-color: #48bb78; }
+        
+        .theme-toggle { position: absolute; top: 20px; right: 20px; z-index: 100; }
+        
+        /* Leave Table Styles */
+        .table-responsive { overflow-x: auto; margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th, td { padding: 12px 15px; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; font-weight: 600; color: var(--primary); }
+        body.dark-mode th { background-color: #1a202c; color: #8f94fb; border-bottom: 1px solid #4a5568; }
+        body.dark-mode td { border-bottom: 1px solid #4a5568; }
+        .badge-status { padding: 5px 10px; border-radius: 12px; font-size: 0.85em; font-weight: 600; }
+        .status-pending { background: #fff3e0; color: #e65100; }
+        .status-approved { background: #e8f5e9; color: #2e7d32; }
+        .status-rejected { background: #ffebee; color: #c62828; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="teacher-dash" class="dashboard">
+            <header>
+                <h1> Teacher Portal</h1>
+                <button class="btn-logout" onclick="logout()">Logout</button>
+            </header>
+
+            <div class="theme-toggle">
+                <button onclick="toggleDarkMode()" id="theme-btn" class="btn-secondary" style="width: auto; padding: 8px 15px;">🌙 Dark Mode</button>
+            </div>
+            
+            <div class="grid-container">
+                <div class="card action-card">
+                    <h3>📸 Register New Student</h3>
+                    <input type="text" id="reg-id" placeholder="Student ID">
+                    <input type="text" id="reg-name" placeholder="Full Name">
+                    <select id="reg-year">
+                        <option value="">Select Year</option>
+                        <option value="1st Year">1st Year</option>
+                        <option value="2nd Year">2nd Year</option>
+                        <option value="3rd Year">3rd Year</option>
+                        <option value="4th Year">4th Year</option>
+                    </select>
+                    <select id="reg-branch">
+                        <option value="">Select Branch</option>
+                        <option value="CSE">CSE - Computer Science</option>
+                        <option value="IT">IT - Information Technology</option>
+                        <option value="ECE">ECE - Electronics & Communication</option>
+                        <option value="EEE">EEE - Electrical & Electronics</option>
+                        <option value="ME">ME - Mechanical Engineering</option>
+                        <option value="CE">CE - Civil Engineering</option>
+                    </select>
+                    <button onclick="registerStudent()">Capture Images</button>
+                </div>
+
+                <div class="card action-card">
+                    <h3>🧠 Train Model</h3>
+                    <p>Update system with new faces.</p>
+                    <button onclick="trainModel()">Train Images</button>
+                </div>
+
+                <div class="card action-card highlight">
+                    <h3>✅ Take Attendance</h3>
+                    <p>Launch the AI Camera.</p>
+                    <button onclick="startAttendance()">Launch Camera</button>
+                </div>
+
+                <div class="card action-card">
+                    <h3>📤 Upload Attendance</h3>
+                    <p>Camera issue? Upload photo.</p>
+                    <input type="file" id="attendance-file" accept="image/*" style="margin: 10px 0; width: 100%;">
+                    <button onclick="uploadAttendanceImage()" style="background-color: #6f42c1;">Upload & Mark</button>
+                    <p id="upload-status" style="margin-top: 5px; font-size: 0.9em;"></p>
+                </div>
+            </div>
+
+            <div class="card full-width">
+                <h3>📋 Leave Requests Management</h3>
+                <p>Review and approve official student leave requests.</p>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Student ID</th>
+                                <th>Start Date</th>
+                                <th>End Date</th>
+                                <th>Reason</th>
+                                <th>Submitted On</th>
+                                <th>Status / Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leave-table-body">
+                            <tr><td colspan="6" style="text-align: center;">Loading requests...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card full-width">
+                <h3>📅 Working Days Calendar</h3>
+                <div class="calendar-controls">
+                    <select id="calendar-year-select"><option value="1st Year">1st Year</option><option value="2nd Year">2nd Year</option><option value="3rd Year">3rd Year</option><option value="4th Year">4th Year</option></select>
+                    <select id="calendar-branch-select"><option value="CSE">CSE</option><option value="IT">IT</option><option value="ECE">ECE</option><option value="EEE">EEE</option><option value="ME">ME</option><option value="CE">CE</option></select>
+                    <select id="calendar-month"><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option></select>
+                    <input type="number" id="calendar-year" value="" min="2020" max="2030" placeholder="Year">
+                    <button onclick="loadCalendar()" style="width: auto;">Load</button>
+                    <button onclick="saveWorkingDays()" class="btn-success" style="width: auto;">Save</button>
+                </div>
+                <div id="calendar-display" class="calendar-grid"></div>
+                <div id="working-days-summary" class="summary-text"></div>
+            </div>
+
+            <div class="card full-width">
+                <h3>🔮 Predictive Analytics & Risk Alerts</h3>
+                <div class="analytics-controls" style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <select id="filter-year" style="padding: 8px;"><option value="">All Years</option><option value="1st Year">1st Year</option><option value="2nd Year">2nd Year</option><option value="3rd Year">3rd Year</option><option value="4th Year">4th Year</option></select>
+                    <select id="filter-branch" style="padding: 8px;"><option value="">All Branches</option><option value="CSE">CSE</option><option value="IT">IT</option><option value="ECE">ECE</option><option value="EEE">EEE</option><option value="ME">ME</option><option value="CE">CE</option></select>
+                    <button onclick="loadRiskAnalysis()" class="btn-warning" style="width: auto;">🚨 Analyze Risk</button>
+                    <button onclick="exportToExcel()" class="btn-secondary" style="width: auto;">📊 Export CSV</button>
+                    <button onclick="exportToPDF()" class="btn-danger" style="width: auto;">📄 Export PDF</button>
+                </div>
+                
+                <div id="risk-alerts" style="display: none;">
+                    <div class="risk-high"><h4 style="margin: 0 0 10px 0;">🔴 High Risk (< 60%)</h4><div id="high-risk-list"></div></div>
+                    <div class="risk-medium"><h4 style="margin: 0 0 10px 0;">🟠 Medium Risk (60-75%)</h4><div id="medium-risk-list"></div></div>
+                    <div class="risk-low"><h4 style="margin: 0 0 10px 0;">🟢 On Track (> 75%)</h4><div id="low-risk-list"></div></div>
+                </div>
+                <div id="analytics-loading" style="display: none; text-align: center; padding: 20px;">🤖 Analyzing...</div>
+            </div>
+
+            <div class="card analytics-card">
+                <h3>📊 Attendance Analytics (Past 7 Days)</h3>
+                <canvas id="attendanceChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // GLOBAL VARIABLES
+        let currentWorkingDays = [];
+        let calendarData = null;
+        let currentRiskData = [];
+
+        // INITIALIZATION
+        document.addEventListener('DOMContentLoaded', () => {
+            loadThemePreference();
+            loadAnalytics();
+            loadLeaves();
+            const now = new Date();
+            document.getElementById('calendar-month').value = now.getMonth() + 1;
+            document.getElementById('calendar-year').value = now.getFullYear();
+            loadCalendar();
+        });
+
+        // UI THEME AND LOGOUT
+        function toggleDarkMode() {
+            const isDark = document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', isDark);
+            document.getElementById('theme-btn').innerText = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+        }
+
+        function loadThemePreference() {
+            if (localStorage.getItem('darkMode') === 'true') {
+                document.body.classList.add('dark-mode');
+                document.getElementById('theme-btn').innerText = '☀️ Light Mode';
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = '/';
+        }
+
+        // CAMERA & HARDWARE ACTIONS
+        async function registerStudent() {
+            const id = document.getElementById('reg-id').value;
+            const name = document.getElementById('reg-name').value;
+            const year = document.getElementById('reg-year').value;
+            const branch = document.getElementById('reg-branch').value;
+            if(!id || !name || !year || !branch) return alert("Fill all fields!");
+            try {
+                const res = await fetch('/start_register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id, name, year, branch}) });
+                const data = await res.json();
+                alert(data.message);
+                document.getElementById('reg-id').value = '';
+                document.getElementById('reg-name').value = '';
+            } catch(e) { alert("Registration Error"); }
+        }
+
+        async function trainModel() { 
+            try {
+                const res = await fetch('/start_train', {method: 'POST'});
+                const data = await res.json();
+                alert(data.message);
+            } catch(e) { alert("Training Error"); }
+        }
+
+        async function startAttendance() { 
+            try {
+                const response = await fetch('/start_attendance', {method: 'POST'});
+                const data = await response.json();
+                alert(data.status === 'success' ? "✅ " + data.message : "❌ Error: " + data.message);
+            } catch (error) {
+                alert("Failed to start attendance. Is the Flask server running?");
+            }
+        }
+
+        async function uploadAttendanceImage() {
+            const fileInput = document.getElementById('attendance-file');
+            const statusEl = document.getElementById('upload-status');
+            if (!fileInput || !fileInput.files.length) return alert("Please select an image file first!");
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            statusEl.innerText = "⏳ Processing image...";
+            statusEl.style.color = "#d97706";
+            try {
+                const res = await fetch('/upload_attendance', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    statusEl.innerText = "✅ Attendance marked!";
+                    statusEl.style.color = "#28a745";
+                    loadAnalytics();
+                } else {
+                    statusEl.innerText = "❌ Error: " + data.message;
+                    statusEl.style.color = "#dc3545";
+                }
+            } catch (error) {
+                statusEl.innerText = "❌ Failed to upload. Server error.";
+                statusEl.style.color = "#dc3545";
+            }
+        }
+
+        // LEAVE MANAGEMENT
+        async function loadLeaves() {
+            const tbody = document.getElementById('leave-table-body');
+            try {
+                const res = await fetch('/get_all_leaves');
+                const data = await res.json();
+                if (data.status === 'success' && data.leaves.length > 0) {
+                    let html = '';
+                    data.leaves.reverse().forEach((leave, index) => {
+                        let actionHtml = '';
+                        if (leave.Status === 'Pending') {
+                            actionHtml = `
+                                <button onclick="updateLeaveStatus(${data.leaves.length - 1 - index}, 'Approved')" class="btn-success" style="padding: 5px 10px; font-size: 0.8em; width: auto; margin-right: 5px;">Approve</button>
+                                <button onclick="updateLeaveStatus(${data.leaves.length - 1 - index}, 'Rejected')" class="btn-danger" style="padding: 5px 10px; font-size: 0.8em; width: auto;">Reject</button>
+                            `;
+                        } else {
+                            actionHtml = `<span class="badge-status status-${leave.Status.toLowerCase()}">${leave.Status}</span>`;
+                        }
+                        html += `
+                            <tr>
+                                <td><strong>${leave.ID}</strong></td>
+                                <td>${leave.Start_Date}</td>
+                                <td>${leave.End_Date}</td>
+                                <td>${leave.Reason}</td>
+                                <td style="font-size: 0.85em; color: #888;">${leave.Applied_On}</td>
+                                <td>${actionHtml}</td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #666;">No leave requests found.</td></tr>';
+                }
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: red;">Error loading requests.</td></tr>';
+            }
+        }
+
+        async function updateLeaveStatus(rowIndex, newStatus) {
+            try {
+                const res = await fetch('/update_leave_status', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ row_index: rowIndex, status: newStatus })
+                });
+                const data = await res.json();
+                if (data.status === 'success') loadLeaves(); 
+                else alert("Error updating status: " + data.message);
+            } catch (e) { alert("Failed to communicate with server."); }
+        }
+
+        // CALENDAR
+        async function loadCalendar() {
+            const year = parseInt(document.getElementById('calendar-year').value);
+            const month = parseInt(document.getElementById('calendar-month').value);
+            const yearSelect = document.getElementById('calendar-year-select').value;
+            const branch = document.getElementById('calendar-branch-select').value;
+            if (!year || !month) return;
+            try {
+                const res = await fetch(`/get_working_days?year=${year}&month=${month}&branch=${branch}&year_select=${yearSelect}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    currentWorkingDays = [...(data.working_days || [])];
+                    calendarData = data.calendar;
+                    renderCalendar(data.calendar, currentWorkingDays, year, month);
+                    document.getElementById('working-days-summary').innerHTML = `<strong>Total Working Days: ${currentWorkingDays.length}</strong>`;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        function renderCalendar(calendarData, workingDays, year, month) {
+            const container = document.getElementById('calendar-display');
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            let html = '<div class="calendar-header">';
+            dayNames.forEach(day => html += `<div class="day-header ${day === 'Sun' ? 'sunday' : ''}">${day}</div>`);
+            html += '</div><div class="calendar-body">';
+            calendarData.forEach(week => {
+                html += '<div class="calendar-week">';
+                week.forEach((day, index) => {
+                    if (day === 0) {
+                        html += '<div class="calendar-day empty"></div>';
+                    } else {
+                        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const isSunday = index === 0;
+                        const isWorking = workingDays.includes(dateStr);
+                        const isSelectable = !isSunday;
+                        html += `<div class="calendar-day ${isSunday ? 'sunday' : ''} ${isWorking ? 'working' : ''} ${isSelectable ? 'selectable' : ''}" 
+                                  ${isSelectable ? `onclick="toggleDate('${dateStr}')"` : ''}>
+                            <span class="day-number">${day}</span>
+                            ${isWorking ? '<span class="check">✓</span>' : ''}
+                        </div>`;
+                    }
+                });
+                html += '</div>';
+            });
+            container.innerHTML = html + '</div>';
+        }
+
+        function toggleDate(dateStr) {
+            const index = currentWorkingDays.indexOf(dateStr);
+            if (index > -1) currentWorkingDays.splice(index, 1);
+            else currentWorkingDays.push(dateStr);
+            const year = parseInt(document.getElementById('calendar-year').value);
+            const month = parseInt(document.getElementById('calendar-month').value);
+            renderCalendar(calendarData, currentWorkingDays, year, month);
+            document.getElementById('working-days-summary').innerHTML = `<strong>Total Working Days: ${currentWorkingDays.length}</strong>`;
+        }
+
+        async function saveWorkingDays() {
+            const year = parseInt(document.getElementById('calendar-year').value);
+            const month = parseInt(document.getElementById('calendar-month').value);
+            const yearSelect = document.getElementById('calendar-year-select').value;
+            const branch = document.getElementById('calendar-branch-select').value;
+            try {
+                const res = await fetch('/set_working_days', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ year, month, year_select: yearSelect, branch, days: currentWorkingDays })
+                });
+                const data = await res.json();
+                alert(data.message);
+            } catch (e) { alert('Failed to save working days'); }
+        }
+
+        // PREDICTIVE ANALYTICS & EXPORTS
+        async function loadRiskAnalysis() {
+            const year = document.getElementById('filter-year').value;
+            const branch = document.getElementById('filter-branch').value;
+            document.getElementById('analytics-loading').style.display = 'block';
+            document.getElementById('analytics-loading').innerHTML = '🤖 Fetching student list...';
+            document.getElementById('risk-alerts').style.display = 'none';
+            currentRiskData = []; 
+
+            try {
+                const res = await fetch('/get_all_students');
+                if (!res.ok) throw new Error("Failed to connect to backend");
+                const data = await res.json();
+                let students = data.students || [];
+
+                if (year) students = students.filter(s => s.year === year);
+                if (branch) students = students.filter(s => s.branch === branch);
+
+                if (students.length === 0) {
+                    document.getElementById('high-risk-list').innerHTML = '<span style="color:#666;">No students found.</span>';
+                    document.getElementById('medium-risk-list').innerHTML = '<span style="color:#666;">No students found.</span>';
+                    document.getElementById('low-risk-list').innerHTML = '<span style="color:#666;">No students found.</span>';
+                    document.getElementById('analytics-loading').style.display = 'none';
+                    document.getElementById('risk-alerts').style.display = 'block';
+                    return;
+                }
+
+                for (let i = 0; i < students.length; i++) {
+                    const student = students[i];
+                    document.getElementById('analytics-loading').innerHTML = `🤖 Analyzing student ${i + 1} of ${students.length}...`;
+                    try {
+                        const statRes = await fetch('/student_stats_working_days', {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({id: student.id, year: '', month: '', branch: student.branch})
+                        });
+                        const statData = await statRes.json();
+                        currentRiskData.push({ 
+                            ...student, 
+                            percentage: statData.percentage || 0, 
+                            present: statData.present || 0, 
+                            total: statData.total_working_days || 0 
+                        });
+                    } catch (statError) {}
+                }
+
+                let highHTML = '', medHTML = '', lowHTML = '';
+                currentRiskData.forEach(s => {
+                    const text = `<strong>${s.name}</strong> (${s.id}) - ${s.branch} | ${s.percentage}% (${s.present}/${s.total} days)`;
+                    if (s.percentage < 60) highHTML += `<div style="padding: 5px 0;">${text}</div>`;
+                    else if (s.percentage <= 75) medHTML += `<div style="padding: 5px 0;">${text}</div>`;
+                    else lowHTML += `<div style="padding: 5px 0;">${text}</div>`;
+                });
+
+                document.getElementById('high-risk-list').innerHTML = highHTML || '<span style="color:#666;">No students in this category.</span>';
+                document.getElementById('medium-risk-list').innerHTML = medHTML || '<span style="color:#666;">No students in this category.</span>';
+                document.getElementById('low-risk-list').innerHTML = lowHTML || '<span style="color:#666;">No students in this category.</span>';
+
+                document.getElementById('analytics-loading').style.display = 'none';
+                document.getElementById('risk-alerts').style.display = 'block';
+
+            } catch (e) {
+                alert('Error loading risk analysis.');
+                document.getElementById('analytics-loading').style.display = 'none';
+            }
+        }
+
+        function exportToExcel() {
+            if (!currentRiskData || currentRiskData.length === 0) {
+                return alert('Please click "Analyze Risk" first to generate the data!');
+            }
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Student ID,Name,Year,Branch,Attendance %,Days Present,Total Working Days,Risk Level\n";
+            currentRiskData.forEach(s => {
+                let risk = s.percentage < 60 ? 'High' : (s.percentage <= 75 ? 'Medium' : 'Safe');
+                let row = `${s.id},${s.name},${s.year},${s.branch},${s.percentage}%,${s.present},${s.total},${risk}`;
+                csvContent += row + "\n";
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Risk_Report_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function exportToPDF() {
+            if (!currentRiskData || currentRiskData.length === 0) {
+                return alert('Please click "Analyze Risk" first to generate the data!');
+            }
+            let printWindow = window.open('', '', 'height=800,width=1000');
+            printWindow.document.write('<html><head><title>Attendance Risk Report</title>');
+            printWindow.document.write(`
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                    th { background-color: #4e54c8; color: white; }
+                    .high { color: #d32f2f; font-weight: bold; }
+                    .med { color: #f57c00; font-weight: bold; }
+                    .low { color: #388e3c; }
+                </style>
+            `);
+            printWindow.document.write('</head><body>');
+            printWindow.document.write(`<h2>🎓 Smart Attendance - Risk Analysis Report</h2>`);
+            printWindow.document.write(`<p>Generated on: ${new Date().toLocaleString()}</p>`);
+            printWindow.document.write('<table><tr><th>Student ID</th><th>Name</th><th>Branch</th><th>Year</th><th>Attendance</th><th>Status</th></tr>');
+
+            currentRiskData.forEach(s => {
+                let riskClass = s.percentage < 60 ? 'high' : (s.percentage <= 75 ? 'med' : 'low');
+                let riskText = s.percentage < 60 ? 'High Risk' : (s.percentage <= 75 ? 'Medium Risk' : 'On Track');
+                printWindow.document.write(`<tr>
+                    <td>${s.id}</td><td>${s.name}</td><td>${s.branch}</td><td>${s.year}</td>
+                    <td class="${riskClass}">${s.percentage}% (${s.present}/${s.total})</td>
+                    <td class="${riskClass}">${riskText}</td>
+                </tr>`);
+            });
+            printWindow.document.write('</table></body></html>');
+            printWindow.document.close();
+            setTimeout(() => { printWindow.print(); }, 500);
+        }
+
+        async function loadAnalytics() {
+            const canvas = document.getElementById('attendanceChart');
+            if (!canvas) return; 
+            try {
+                const res = await fetch('/get_analytics');
+                const result = await res.json();
+                const ctx = canvas.getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: Object.keys(result.data),
+                        datasets: [{
+                            label: 'Students Present',
+                            data: Object.values(result.data),
+                            backgroundColor: '#4e54c8',
+                            borderRadius: 5
+                        }]
+                    },
+                    options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+                });
+            } catch (error) { console.error('Chart Error:', error); }
+        }
+    </script>
+</body>
+</html>

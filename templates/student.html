@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Portal - Smart Attendance System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <style>
+        /* Existing Dark Mode & Animations */
+        body.dark-mode { background: linear-gradient(to right, #1a1a2e, #16213e); color: #eee; }
+        body.dark-mode .card { background: #2d3748; color: #eee; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        body.dark-mode input, body.dark-mode select, body.dark-mode textarea { background: #2d3748; color: #eee; border-color: #4a5568; }
+        body.dark-mode #qrcode canvas { background: white !important; }
+        .theme-toggle { position: absolute; top: 20px; right: 20px; z-index: 100; }
+        
+        /* Badges & Streak */
+        .badge { transition: all 0.3s ease; }
+        .badge:hover { transform: scale(1.1); }
+        .streak-display { animation: glow 1.5s ease-in-out infinite; }
+        @keyframes glow { 0%, 100% { box-shadow: 0 0 20px rgba(255, 100, 0, 0.5); } 50% { box-shadow: 0 0 40px rgba(255, 150, 0, 0.8), 0 0 60px rgba(255, 50, 0, 0.4); } }
+        
+        /* 🆕 AI Chatbot Styles */
+        .chatbot-container {
+            position: fixed; bottom: 90px; right: 20px; width: 320px;
+            background: white; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex; flex-direction: column; overflow: hidden; z-index: 1000;
+            transition: all 0.3s ease; opacity: 1; transform: translateY(0);
+        }
+        .chatbot-container.hidden { opacity: 0; transform: translateY(20px); pointer-events: none; }
+        .chat-header { background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; padding: 15px; font-weight: 600; display: flex; justify-content: space-between; }
+        .chat-body { height: 250px; overflow-y: auto; padding: 15px; background: #f8f9fa; display: flex; flex-direction: column; gap: 10px; }
+        .chat-message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 0.9em; }
+        .chat-message.bot { background: #e3f2fd; color: #0d47a1; align-self: flex-start; border-bottom-left-radius: 2px; }
+        .chat-message.user { background: var(--primary); color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .chat-footer { padding: 10px; background: white; border-top: 1px solid #eee; display: flex; gap: 5px; }
+        .chat-footer input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ddd; outline: none; }
+        
+        body.dark-mode .chatbot-container { background: #2d3748; }
+        body.dark-mode .chat-body { background: #1a202c; }
+        body.dark-mode .chat-footer { background: #2d3748; border-color: #4a5568; }
+        body.dark-mode .chat-message.bot { background: #2c5282; color: #e2e8f0; }
+        
+        /* 🆕 Form Input Adjustments */
+        textarea { width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 10px; font-family: inherit; resize: vertical; }
+        textarea:focus { border-color: var(--primary); outline: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="student-dash" class="dashboard">
+            <header>
+                <h1>👨‍🎓 Student Portal</h1>
+                <button class="btn-logout" onclick="logout()">Logout</button>
+            </header>
+
+            <div class="theme-toggle">
+                <button onclick="toggleDarkMode()" id="theme-btn" class="btn-secondary" style="width: auto; padding: 8px 15px;">🌙 Dark Mode</button>
+            </div>
+
+            <div id="notification-banner" class="risk-high" style="display: none; margin-bottom: 25px; align-items: center; gap: 10px;">
+                <span style="font-size: 1.5em;">⚠️</span>
+                <div>
+                    <strong>Action Required:</strong> Your attendance is currently below 75%. Please ensure you attend upcoming classes to avoid academic penalties.
+                </div>
+            </div>
+
+            <div class="grid-container">
+                <div class="card info-card">
+                    <h3>📊 Your Attendance</h3>
+                    <div class="student-info" style="margin-bottom: 15px; padding: 10px; background: #e3f2fd; border-radius: 8px;">
+                        <p style="margin: 5px 0;"><strong>Year:</strong> <span id="stu-year">-</span></p>
+                        <p style="margin: 5px 0;"><strong>Branch:</strong> <span id="stu-branch">-</span></p>
+                    </div>
+                    <div class="stat-box">
+                        <span id="stu-percentage">0%</span>
+                        <p>Overall Attendance</p>
+                    </div>
+                    <p>Days Present: <span id="stu-present">0</span> / <span id="stu-total">0</span> (Working Days)</p>
+                </div>
+
+                <div class="card action-card">
+                    <h3>📝 Request Leave</h3>
+                    <p style="margin-bottom: 15px;">Submit an official leave request to your teachers.</p>
+                    <div style="text-align: left;">
+                        <label style="font-size: 0.9em; font-weight: 600; color: #555;">Start Date</label>
+                        <input type="date" id="leave-start" style="margin-bottom: 10px;">
+                        
+                        <label style="font-size: 0.9em; font-weight: 600; color: #555;">End Date</label>
+                        <input type="date" id="leave-end" style="margin-bottom: 10px;">
+                        
+                        <label style="font-size: 0.9em; font-weight: 600; color: #555;">Reason for Leave</label>
+                        <textarea id="leave-reason" rows="3" placeholder="Briefly explain your absence..."></textarea>
+                    </div>
+                    <button onclick="submitLeaveRequest()" class="btn-primary" style="margin-top: 15px;">Submit Request</button>
+                    <p id="leave-status" style="margin-top: 10px; font-weight: 600; font-size: 0.9em;"></p>
+                </div>
+
+                <div class="card calc-card">
+                    <h3>📅 Attendance Calculator</h3>
+                    <p>Enter your target percentage (e.g., 75%)</p>
+                    <input type="number" id="target-percent" value="75">
+                    <button onclick="calculateProjection()" class="mt-2">Calculate</button>
+                    <p id="calc-result" class="calc-result"></p>
+                </div>
+
+                <div class="card qr-card">
+                    <h3>📱 QR Code ID</h3>
+                    <div id="qrcode" style="padding: 10px; background: white; border-radius: 10px; margin: 10px auto; display: inline-block;"></div>
+                    <p id="qr-info" style="font-size: 0.8em; color: #666; margin-top: 5px;"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button id="chatbot-fab" onclick="toggleChat()" class="btn-primary" style="position: fixed; bottom: 20px; right: 20px; width: 65px; height: 65px; border-radius: 50%; font-size: 1.8em; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 1001; display: flex; align-items: center; justify-content: center;">💬</button>
+    
+    <div id="chatbot-widget" class="chatbot-container hidden">
+        <div class="chat-header">
+            <span>🤖 AI Assistant</span>
+            <button onclick="toggleChat()" style="background:none; border:none; color:white; font-size:1.2em; cursor:pointer;">✖</button>
+        </div>
+        <div id="chat-body" class="chat-body">
+            <div class="chat-message bot">Hello! I am your SmartAttend AI. Ask me about your attendance, leave policies, or how to use the system!</div>
+        </div>
+        <div class="chat-footer">
+            <input type="text" id="chat-input" placeholder="Type a message..." onkeypress="handleChatEnter(event)">
+            <button onclick="sendChatMessage()" class="btn-primary" style="width: auto; padding: 8px 15px; border-radius: 20px;">Send</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        let studentId = new URLSearchParams(window.location.search).get('id') || 1;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStudentStatsWorkingDays(studentId);
+            loadThemePreference();
+            generateQRCode();
+        });
+
+        async function loadStudentStatsWorkingDays(id) {
+            try {
+                const res = await fetch('/student_stats_working_days', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({id: id})
+                });
+                const data = await res.json();
+                
+                document.getElementById('stu-percentage').innerText = data.percentage + '%';
+                document.getElementById('stu-present').innerText = data.present;
+                document.getElementById('stu-total').innerText = data.total_working_days;
+                document.getElementById('stu-year').innerText = data.year || '-';
+                document.getElementById('stu-branch').innerText = data.branch || '-';
+                
+                // 🆕 Notification Logic
+                if (parseFloat(data.percentage) < 75) {
+                    document.getElementById('notification-banner').style.display = 'flex';
+                }
+            } catch (e) { console.error('Error loading stats:', e); }
+        }
+
+        // 🆕 Leave Request Logic
+        async function submitLeaveRequest() {
+            const startDate = document.getElementById('leave-start').value;
+            const endDate = document.getElementById('leave-end').value;
+            const reason = document.getElementById('leave-reason').value;
+            const statusEl = document.getElementById('leave-status');
+
+            if (!startDate || !endDate || !reason) {
+                statusEl.innerText = "❌ Please fill in all fields.";
+                statusEl.style.color = "red";
+                return;
+            }
+
+            try {
+                const res = await fetch('/apply_leave', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        student_id: studentId,
+                        start_date: startDate,
+                        end_date: endDate,
+                        reason: reason
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    statusEl.innerText = "✅ " + data.message;
+                    statusEl.style.color = "green";
+                    // Clear form
+                    document.getElementById('leave-start').value = '';
+                    document.getElementById('leave-end').value = '';
+                    document.getElementById('leave-reason').value = '';
+                }
+            } catch (e) {
+                statusEl.innerText = "Server error. Please try again.";
+                statusEl.style.color = "red";
+            }
+        }
+
+        // 🆕 Chatbot Logic
+        function toggleChat() {
+            const widget = document.getElementById('chatbot-widget');
+            widget.classList.toggle('hidden');
+        }
+
+        function handleChatEnter(e) {
+            if (e.key === 'Enter') sendChatMessage();
+        }
+
+        async function sendChatMessage() {
+            const inputEl = document.getElementById('chat-input');
+            const message = inputEl.value.trim();
+            if (!message) return;
+
+            const chatBody = document.getElementById('chat-body');
+            
+            // Add user message to UI
+            chatBody.innerHTML += `<div class="chat-message user">${message}</div>`;
+            inputEl.value = '';
+            chatBody.scrollTop = chatBody.scrollHeight; // Auto-scroll
+
+            // Show typing indicator
+            const typingId = 'typing-' + Date.now();
+            chatBody.innerHTML += `<div id="${typingId}" class="chat-message bot">Analyzing your records...</div>`;
+            chatBody.scrollTop = chatBody.scrollHeight;
+
+            // Get the Student ID from the URL so the AI knows who is asking!
+            const studentId = new URLSearchParams(window.location.search).get('id');
+
+            try {
+                // Call backend API with BOTH message and student ID
+                const res = await fetch('/chatbot', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        message: message,
+                        student_id: studentId
+                    })
+                });
+                
+                const data = await res.json();
+                
+                // Remove typing indicator and add the smart response
+                document.getElementById(typingId).remove();
+                chatBody.innerHTML += `<div class="chat-message bot">${data.reply}</div>`;
+                chatBody.scrollTop = chatBody.scrollHeight;
+                
+            } catch (e) {
+                document.getElementById(typingId).remove();
+                chatBody.innerHTML += `<div class="chat-message bot" style="color: red;">Failed to connect to AI server.</div>`;
+            }
+        }
+
+        // Standard Utility Functions (Theme, Log out, QR)
+        function toggleDarkMode() {
+            const isDark = document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', isDark);
+            document.getElementById('theme-btn').innerText = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+        }
+
+        function loadThemePreference() {
+            if (localStorage.getItem('darkMode') === 'true') {
+                document.body.classList.add('dark-mode');
+                document.getElementById('theme-btn').innerText = '☀️ Light Mode';
+            }
+        }
+
+        function logout() { window.location.href = '/'; }
+
+        function generateQRCode() {
+            const dateStr = new Date().toISOString().split('T')[0];
+            const cardUrl = `${window.location.origin}/student_card?id=${studentId}&date=${dateStr}`;
+            QRCode.toCanvas(cardUrl, { width: 150, margin: 2, color: { dark: '#1e3c72', light: '#ffffff' } }, function(err, canvas) {
+                if (!err) document.getElementById('qrcode').appendChild(canvas);
+            });
+            document.getElementById('qr-info').innerHTML = `<strong>ID:</strong> ${studentId}`;
+        }
+    </script>
+</body>
+</html>
